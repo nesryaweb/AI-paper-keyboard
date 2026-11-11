@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -19,10 +20,61 @@ const SETTINGS_KEY = "keyboard-ai-settings";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 function normalizeLabel(label) {
-  return label
-    .trim()
-    .toUpperCase()
-    .replace(/[\s_-]/g, "");
+  return label.trim().toUpperCase().replace(/[\s_-]/g, "");
+}
+
+function isEmptyClass(label) {
+  return ["EMPTY", "NOHAND", "NONE", "NOTOUCH"].includes(
+    normalizeLabel(label)
+  );
+}
+
+// Converts A1, A2, A10, A25, etc. into A.
+// Also accepts a plain class name such as A.
+function getLetterFromClass(label) {
+  const normalized = normalizeLabel(label);
+
+  if (isEmptyClass(normalized)) {
+    return null;
+  }
+
+  const match = normalized.match(/^([A-Z])\d*$/);
+
+  return match ? match[1] : null;
+}
+
+// Combines the confidence scores of all sample classes
+// that belong to the same letter.
+function groupPredictions(predictions) {
+  const grouped = new Map();
+
+  predictions.forEach((prediction) => {
+    const normalized = normalizeLabel(prediction.className);
+
+    let group;
+
+    if (isEmptyClass(normalized)) {
+      group = "EMPTY";
+    } else {
+      group = getLetterFromClass(normalized);
+    }
+
+    if (!group) return;
+
+    const currentScore = grouped.get(group) || 0;
+
+    grouped.set(
+      group,
+      currentScore + prediction.probability
+    );
+  });
+
+  return Array.from(grouped.entries())
+    .map(([className, probability]) => ({
+      className,
+      probability,
+    }))
+    .sort((a, b) => b.probability - a.probability);
 }
 
 export default function Home() {
@@ -45,7 +97,7 @@ export default function Home() {
   const streamRef = useRef(null);
   const modelRef = useRef(null);
   const predictionLoopRef = useRef(false);
-  const acceptedKeyRef = useRef(false);
+  const lastAcceptedKeyRef = useRef(null);
   const settingsRef = useRef(null);
 
   async function openCameraChooser() {
@@ -62,7 +114,7 @@ export default function Home() {
 
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(
-        (device) => device.kind === "videoinput",
+        (device) => device.kind === "videoinput"
       );
 
       setCameras(videoDevices);
@@ -92,7 +144,7 @@ export default function Home() {
       setSelectedCamera(deviceId);
       setCameraActive(true);
       setCameraChooser(false);
-      acceptedKeyRef.current = false;
+      lastAcceptedKeyRef.current = null;
     } catch {
       setCameraError("Could not start this camera. Please try another one.");
     }
@@ -106,6 +158,7 @@ export default function Home() {
       streamRef.current = null;
     }
 
+    lastAcceptedKeyRef.current = null;
     setCameraActive(false);
     setRecognizedKey("--");
     setConfidence(0);
@@ -163,7 +216,7 @@ export default function Home() {
 
       const model = await tmImage.load(
         `${url}model.json`,
-        `${url}metadata.json`,
+        `${url}metadata.json`
       );
 
       modelRef.current = model;
@@ -171,9 +224,14 @@ export default function Home() {
 
       const labels = model.getClassLabels();
 
-      const letters = labels
-        .map((label) => label.trim().toUpperCase())
-        .filter((label) => /^[A-Z]$/.test(label));
+      // A1, A2, A10, etc. all count as the trained letter A.
+      const letters = [
+        ...new Set(
+          labels
+            .map((label) => getLetterFromClass(label))
+            .filter(Boolean)
+        ),
+      ].sort();
 
       setTrainedLetters(letters);
       setModelReady(true);
@@ -233,40 +291,46 @@ export default function Home() {
 
             if (!running) return;
 
-            const best = predictions.reduce((a, b) =>
-              a.probability > b.probability ? a : b,
-            );
+            // Combine all sample classes into their letter groups.
+            const groupedPredictions = groupPredictions(predictions);
 
-            const bestLabel = best.className;
-            const bestConfidence = best.probability;
-            const threshold = (settingsRef.current?.confidence ?? 85) / 100;
-
-            setRecognizedKey(bestLabel);
-            setConfidence(Math.round(bestConfidence * 100));
-
-            const normalized = normalizeLabel(bestLabel);
-
-            if (
-              normalized === "NOHAND" ||
-              normalized === "NONE" ||
-              normalized === "NOTOUCH"
-            ) {
-              acceptedKeyRef.current = false;
-              setAiStatus("Ready for next touch");
-            } else if (
-              /^[A-Z]$/.test(bestLabel.trim().toUpperCase()) &&
-              bestConfidence >= threshold
-            ) {
-              if (!acceptedKeyRef.current) {
-                setTypedText(
-                  (previous) => previous + bestLabel.trim().toUpperCase(),
-                );
-                acceptedKeyRef.current = true;
-              }
-
-              setAiStatus("Key recognized");
+            if (groupedPredictions.length === 0) {
+              setRecognizedKey("--");
+              setConfidence(0);
+              setAiStatus("Waiting for prediction...");
             } else {
-              setAiStatus("Looking for a key...");
+              // Find the letter group with the highest combined score.
+              const best = groupedPredictions[0];
+
+              const bestLabel = best.className;
+              const bestConfidence = best.probability;
+
+              const threshold =
+                (settingsRef.current?.confidence ?? 85) / 100;
+
+              // Show the combined letter and combined confidence.
+              setRecognizedKey(bestLabel);
+              setConfidence(Math.min(100, Math.round(bestConfidence * 100)));
+
+              const isLetter = /^[A-Z]$/.test(bestLabel);
+
+              if (bestLabel === "EMPTY") {
+                lastAcceptedKeyRef.current = null;
+                setAiStatus("Ready for next touch");
+              } else if (
+                isLetter &&
+                bestConfidence >= threshold
+              ) {
+                if (lastAcceptedKeyRef.current !== bestLabel) {
+                  setTypedText((previous) => previous + bestLabel);
+                  lastAcceptedKeyRef.current = bestLabel;
+                  setAiStatus(`Typed ${bestLabel}`);
+                } else {
+                  setAiStatus("Key held — move to another key");
+                }
+              } else {
+                setAiStatus("Looking for a key...");
+              }
             }
           }
         } catch (error) {
@@ -295,7 +359,11 @@ export default function Home() {
     loadSavedModel();
 
     function handleShortcut(event) {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "a") {
+      if (
+        event.ctrlKey &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "a"
+      ) {
         window.location.href = "/admin";
       }
     }
@@ -317,10 +385,10 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-gradient-to-l from-[#fce8d5] via-[#fffbf5] to-[#dce9fc] text-[#0d1117]">
-      {/* Soft decorative gradient glows */}
       <div className="pointer-events-none fixed -left-40 -top-40 h-[500px] w-[500px] rounded-full bg-[#f4b47e]/20 blur-[120px]" />
       <div className="pointer-events-none fixed -right-40 top-[25%] h-[450px] w-[450px] rounded-full bg-[#6fa3f5]/15 blur-[130px]" />
       <div className="pointer-events-none fixed -bottom-40 left-[30%] h-[450px] w-[450px] rounded-full bg-[#f4b47e]/10 blur-[120px]" />
+
       <div className="relative z-10 mx-auto max-w-[1500px] px-5 py-5 md:px-10 md:py-7">
         <header className="mb-5 text-center">
           <div className="mb-1 flex items-center justify-center gap-2 text-xs font-bold tracking-[0.2em] text-[#e6840a]">
@@ -328,7 +396,7 @@ export default function Home() {
             ARTIFICIAL INTELLIGENCE IN ACTION
           </div>
 
-          <h1 className="font-serif text-2xl sm:text-3xl font-semibold md:text-4xl">
+          <h1 className="font-serif text-2xl font-semibold sm:text-3xl md:text-4xl">
             Watch <span className="text-[#e6840a]">AI</span> Turn Touches Into{" "}
             <span className="text-[#174ea6]">Text</span>
           </h1>
@@ -344,7 +412,6 @@ export default function Home() {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0d1117] text-white">
                 <Keyboard size={19} />
               </div>
-
               <div>
                 <h2 className="font-semibold">Your AI Keyboard</h2>
                 <p className="text-xs text-[#68717d]">
@@ -453,7 +520,6 @@ export default function Home() {
                   >
                     Switch camera
                   </button>
-
                   <button
                     onClick={stopCamera}
                     className="rounded-lg bg-[#0d1117] px-4 py-2 text-sm text-white transition hover:bg-[#6fa3f5] hover:text-[#0d1117]"
@@ -484,7 +550,6 @@ export default function Home() {
               <p className="mb-2 text-xs font-bold tracking-wider text-[#68717d]">
                 RECOGNIZED KEY
               </p>
-
               <div className="flex min-h-24 items-center justify-center rounded-lg border border-[#e5e5e5] bg-white">
                 <span className="font-serif text-5xl font-semibold">
                   {recognizedKey}
@@ -492,7 +557,7 @@ export default function Home() {
               </div>
 
               <div className="mt-4 flex items-center justify-between text-sm">
-                <span className="text-[#68717d]">Confidence</span>
+                <span className="text-[#68717d]">Combined confidence</span>
                 <span className="font-semibold">{confidence}%</span>
               </div>
 
