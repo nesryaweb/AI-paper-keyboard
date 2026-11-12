@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -20,13 +19,16 @@ const SETTINGS_KEY = "keyboard-ai-settings";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 function normalizeLabel(label) {
-  return label.trim().toUpperCase().replace(/[\s_-]/g, "");
+  return label
+    .trim()
+    .toUpperCase()
+    .replace(/[\s_-]/g, "");
 }
 
 function isEmptyClass(label) {
-  return ["EMPTY", "NOHAND", "NONE", "NOTOUCH"].includes(
-    normalizeLabel(label)
-  );
+  const normalized = normalizeLabel(label);
+
+  return /^(EMPTY|NOHAND|NONE|NOTOUCH)\d*$/.test(normalized);
 }
 
 // Converts A1, A2, A10, A25, etc. into A.
@@ -63,10 +65,7 @@ function groupPredictions(predictions) {
 
     const currentScore = grouped.get(group) || 0;
 
-    grouped.set(
-      group,
-      currentScore + prediction.probability
-    );
+    grouped.set(group, currentScore + prediction.probability);
   });
 
   return Array.from(grouped.entries())
@@ -114,7 +113,7 @@ export default function Home() {
 
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(
-        (device) => device.kind === "videoinput"
+        (device) => device.kind === "videoinput",
       );
 
       setCameras(videoDevices);
@@ -216,7 +215,7 @@ export default function Home() {
 
       const model = await tmImage.load(
         `${url}model.json`,
-        `${url}metadata.json`
+        `${url}metadata.json`,
       );
 
       modelRef.current = model;
@@ -227,9 +226,7 @@ export default function Home() {
       // A1, A2, A10, etc. all count as the trained letter A.
       const letters = [
         ...new Set(
-          labels
-            .map((label) => getLetterFromClass(label))
-            .filter(Boolean)
+          labels.map((label) => getLetterFromClass(label)).filter(Boolean),
         ),
       ].sort();
 
@@ -305,8 +302,7 @@ export default function Home() {
               const bestLabel = best.className;
               const bestConfidence = best.probability;
 
-              const threshold =
-                (settingsRef.current?.confidence ?? 85) / 100;
+              const threshold = (settingsRef.current?.confidence ?? 85) / 100;
 
               // Show the combined letter and combined confidence.
               setRecognizedKey(bestLabel);
@@ -317,10 +313,7 @@ export default function Home() {
               if (bestLabel === "EMPTY") {
                 lastAcceptedKeyRef.current = null;
                 setAiStatus("Ready for next touch");
-              } else if (
-                isLetter &&
-                bestConfidence >= threshold
-              ) {
+              } else if (isLetter && bestConfidence >= threshold) {
                 if (lastAcceptedKeyRef.current !== bestLabel) {
                   setTypedText((previous) => previous + bestLabel);
                   lastAcceptedKeyRef.current = bestLabel;
@@ -359,11 +352,7 @@ export default function Home() {
     loadSavedModel();
 
     function handleShortcut(event) {
-      if (
-        event.ctrlKey &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "a"
-      ) {
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "a") {
         window.location.href = "/admin";
       }
     }

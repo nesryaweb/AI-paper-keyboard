@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -16,7 +15,10 @@ import {
 const SETTINGS_KEY = "keyboard-ai-settings";
 
 function normalizeLabel(label) {
-  return label.trim().toUpperCase().replace(/[\s_-]/g, "");
+  return label
+    .trim()
+    .toUpperCase()
+    .replace(/[\s_-]/g, "");
 }
 
 function normalizeUrl(url) {
@@ -28,9 +30,9 @@ function normalizeUrl(url) {
 }
 
 function isEmptyClass(label) {
-  return ["EMPTY", "NOHAND", "NONE", "NOTOUCH"].includes(
-    normalizeLabel(label)
-  );
+  const normalized = normalizeLabel(label);
+
+  return /^(EMPTY|NOHAND|NONE|NOTOUCH)\d*$/.test(normalized);
 }
 
 function getLetterFromClass(label) {
@@ -71,9 +73,7 @@ function summarizeClasses(classes) {
   });
 
   return {
-    groups: Object.entries(groups).sort(([a], [b]) =>
-      a.localeCompare(b)
-    ),
+    groups: Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)),
     emptyClasses,
     otherClasses,
   };
@@ -124,7 +124,7 @@ export default function AdminPage() {
 
       const model = await tmImage.load(
         `${url}model.json`,
-        `${url}metadata.json`
+        `${url}metadata.json`,
       );
 
       const labels = model.getClassLabels();
@@ -142,7 +142,7 @@ export default function AdminPage() {
       console.error(error);
 
       setMessage(
-        "Could not load the model. Check the URL and make sure the model has been uploaded to Teachable Machine."
+        "Could not load the model. Check the URL and make sure the model has been uploaded to Teachable Machine.",
       );
 
       setMessageType("error");
@@ -182,13 +182,12 @@ export default function AdminPage() {
 
   const totalSamples = summary.groups.reduce(
     (total, [, samples]) => total + samples.length,
-    0
+    0,
   );
 
   return (
     <main className="min-h-screen bg-[#fffbf5] px-5 py-8 text-[#0d1117]">
       <div className="mx-auto max-w-2xl">
-
         <Link
           href="/"
           className="mb-8 inline-flex items-center gap-2 text-sm text-[#68717d] transition hover:text-[#6fa3f5]"
@@ -216,7 +215,6 @@ export default function AdminPage() {
         </div>
 
         <section className="rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-sm md:p-8">
-
           <label className="mb-2 block text-sm font-semibold">
             Teachable Machine Model URL
           </label>
@@ -245,9 +243,7 @@ export default function AdminPage() {
               Recognition confidence
             </label>
 
-            <span className="font-semibold text-[#e6840a]">
-              {confidence}%
-            </span>
+            <span className="font-semibold text-[#e6840a]">{confidence}%</span>
           </div>
 
           <input
@@ -260,8 +256,8 @@ export default function AdminPage() {
           />
 
           <p className="mt-2 text-xs text-[#68717d]">
-            The homepage compares this threshold against the combined
-            confidence of all samples belonging to a letter.
+            The homepage compares this threshold against the combined confidence
+            of all samples belonging to a letter.
           </p>
 
           <div className="my-7 border-t border-[#e5e5e5]" />
@@ -286,7 +282,6 @@ export default function AdminPage() {
 
           {classes.length > 0 && (
             <div className="mt-6 rounded-xl border border-[#6fa3f5] bg-[#f1f6ff] p-4">
-
               <div className="mb-4 flex items-center gap-2 font-semibold text-[#0d1117]">
                 <CheckCircle2 size={18} className="text-green-600" />
                 {tested
@@ -295,8 +290,7 @@ export default function AdminPage() {
               </div>
 
               <p className="mb-4 text-sm text-[#68717d]">
-                Your model's classes have been organized into letter
-                groups.
+                Your model's classes have been organized into letter groups.
               </p>
 
               <div className="mb-5 grid grid-cols-3 gap-2">
@@ -402,12 +396,11 @@ export default function AdminPage() {
                   </div>
 
                   <p className="mt-2 text-xs text-red-700">
-                    These class names do not match the expected letter
-                    or EMPTY format.
+                    These class names do not match the expected letter or EMPTY
+                    format.
                   </p>
                 </div>
               )}
-
             </div>
           )}
 
@@ -437,7 +430,6 @@ export default function AdminPage() {
             <Save size={17} />
             Save Model Settings
           </button>
-
         </section>
 
         <section className="mt-5 rounded-2xl border border-[#e5e5e5] bg-white p-6">
@@ -447,15 +439,14 @@ export default function AdminPage() {
           </div>
 
           <p className="text-sm leading-relaxed text-[#68717d]">
-            You can train the AI with any letter from A to Z. Each
-            letter can have as many numbered sample classes as you need,
-            such as A1, A2, A10, or A25. The homepage automatically groups
-            these classes together and combines their prediction scores.
-            Keep an EMPTY class so the website can recognize when a
-            finger moves away from the keyboard.
+            You can train the AI with any letter from A to Z. Each letter can
+            have as many numbered sample classes as you need, such as A1, A2,
+            A10, or A25. The homepage automatically groups these classes
+            together and combines their prediction scores. Keep an EMPTY class
+            so the website can recognize when a finger moves away from the
+            keyboard.
           </p>
         </section>
-
       </div>
     </main>
   );
